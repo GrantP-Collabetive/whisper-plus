@@ -41,6 +41,7 @@ class ASRDiarizationPipeline:
             **kwargs,
         )
         diarization_pipeline = Pipeline.from_pretrained(diarizer_model, use_auth_token=use_auth_token)
+        diarization_pipeline.to(torch.device("cuda"))
         return cls(asr_pipeline, diarization_pipeline)
 
     def __call__(
