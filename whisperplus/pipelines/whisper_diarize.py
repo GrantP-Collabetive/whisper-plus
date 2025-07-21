@@ -166,24 +166,25 @@ class ASRDiarizationPipeline:
 
         # align the diarizer timestamps and the ASR timestamps
         for segment in new_segments:
-            # get the diarizer end timestamp
             end_time = segment["segment"]["end"]
-            # find the ASR end timestamp that is closest to the diarizer's end timestamp and cut the transcript to here
+        
+            if len(end_timestamps) == 0:
+                # No more transcript data to align with
+                break
+        
             upto_idx = np.argmin(np.abs(end_timestamps - end_time))
-
+        
             if group_by_speaker:
                 segmented_preds.append({
-                    "speaker":
-                    segment["speaker"],
-                    "text":
-                    "".join([chunk["text"] for chunk in transcript[:upto_idx + 1]]),
+                    "speaker": segment["speaker"],
+                    "text": "".join([chunk["text"] for chunk in transcript[:upto_idx + 1]]),
                     "timestamp": (transcript[0]["timestamp"][0], transcript[upto_idx]["timestamp"][1]),
                 })
             else:
                 for i in range(upto_idx + 1):
                     segmented_preds.append({"speaker": segment["speaker"], **transcript[i]})
-
-            # crop the transcripts and timestamp lists according to the latest timestamp (for faster argmin)
+        
+            # Crop for next iteration
             transcript = transcript[upto_idx + 1:]
             end_timestamps = end_timestamps[upto_idx + 1:]
 
