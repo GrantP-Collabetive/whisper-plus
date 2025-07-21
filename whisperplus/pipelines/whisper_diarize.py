@@ -164,29 +164,57 @@ class ASRDiarizationPipeline:
         end_timestamps = np.array([chunk["timestamp"][-1] for chunk in transcript])
         segmented_preds = []
 
+        # Track total used ASR chunks
+        used_chunks = set()
         # align the diarizer timestamps and the ASR timestamps
         for segment in new_segments:
             end_time = segment["segment"]["end"]
         
-            if len(end_timestamps) == 0:
-                # No more transcript data to align with
-                break
+            if len(end_timestamps) == 0 or len(transcript) == 0:
+                # Diarization segment exists but no ASR to align
+                segmented_preds.append({
+                    "speaker": segment["speaker"],
+                    "text": "[unmatched speaker segment]",
+                    "timestamp": (segment["segment"]["start"], segment["segment"]["end"]),
+                })
+                continue
         
+            # Find closest ASR chunk that ends near the diarizer end time
             upto_idx = np.argmin(np.abs(end_timestamps - end_time))
         
             if group_by_speaker:
+                text = "".join([chunk["text"] for chunk in transcript[:upto_idx + 1]])
+                timestamp = (transcript[0]["timestamp"][0], transcript[upto_idx]["timestamp"][1])
                 segmented_preds.append({
                     "speaker": segment["speaker"],
-                    "text": "".join([chunk["text"] for chunk in transcript[:upto_idx + 1]]),
-                    "timestamp": (transcript[0]["timestamp"][0], transcript[upto_idx]["timestamp"][1]),
+                    "text": text,
+                    "timestamp": timestamp,
                 })
             else:
                 for i in range(upto_idx + 1):
                     segmented_preds.append({"speaker": segment["speaker"], **transcript[i]})
         
-            # Crop for next iteration
+            # Track which ASR chunks have been used
+            used_chunks.update(range(0, upto_idx + 1))
+        
+            # Trim for next iteration
             transcript = transcript[upto_idx + 1:]
             end_timestamps = end_timestamps[upto_idx + 1:]
+        
+        #After all diarization segments are processed, if any ASR chunks remain, add them
+        if len(transcript) > 0:
+            remaining_text = "".join([chunk["text"] for chunk in transcript])
+            
+            # Count existing speakers to label next one properly
+            diarized_speakers = {seg["speaker"] for seg in segmented_preds if "Speaker" in seg["speaker"]}
+            speaker_ids = [int(s.split()[1]) for s in diarized_speakers if s.split()[1].isdigit()]
+            next_speaker_id = max(speaker_ids, default=2) + 1  # Start from Speaker 3 or next available
+        
+            segmented_preds.append({
+                "speaker": f"Speaker {next_speaker_id} (not diarized)",
+                "text": remaining_text,
+                "timestamp": (transcript[0]["timestamp"][0], transcript[-1]["timestamp"][1]),
+            })
 
         return segmented_preds
 
